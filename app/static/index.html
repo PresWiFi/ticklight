@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticklight</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <div class="clock">
+    <div id="time">--:--</div>
+    <div id="date"></div>
+  </div>
+  <form id="quick" autocomplete="off">
+    <input id="quick-input" placeholder="Add a task… e.g. “water plants every 3 days” or “call dentist tomorrow 3pm !!”  (press / to focus)">
+    <div id="quick-preview"></div>
+  </form>
+  <div class="header-actions">
+    <div id="progress" title="Done today"></div>
+    <button id="btn-new" class="ghost" title="New task with full options (n)">＋</button>
+    <button id="btn-display" class="ghost" title="Toggle display mode (d)">⛶</button>
+  </div>
+</header>
+
+<main>
+  <section class="col col-now">
+    <div id="overdue-wrap" hidden>
+      <h2 class="danger">Overdue <span class="count" id="overdue-count"></span></h2>
+      <ul id="overdue" class="tasks"></ul>
+    </div>
+    <h2>Today <span class="count" id="today-count"></span></h2>
+    <ul id="today" class="tasks"></ul>
+    <div id="today-empty" class="empty" hidden>Nothing left for today 🎉</div>
+  </section>
+
+  <section class="col col-upcoming">
+    <h2>Coming up</h2>
+    <div id="upcoming"></div>
+    <div id="upcoming-empty" class="empty" hidden>Nothing scheduled this week</div>
+    <details id="later-wrap" hidden>
+      <summary>Later <span class="count" id="later-count"></span></summary>
+      <ul id="later" class="tasks compact"></ul>
+    </details>
+  </section>
+
+  <section class="col col-side">
+    <h2>Anytime <span class="count" id="anytime-count"></span></h2>
+    <ul id="anytime" class="tasks compact"></ul>
+    <div id="anytime-empty" class="empty" hidden>Inbox zero</div>
+    <h2 class="muted-h">Done today <span class="count" id="done-count"></span></h2>
+    <ul id="done" class="tasks compact done-list"></ul>
+  </section>
+</main>
+
+<div id="offline" hidden>⚠ Can't reach server — retrying…</div>
+<div id="toast" hidden><span id="toast-msg"></span><button id="toast-undo">Undo</button></div>
+
+<dialog id="editor">
+  <form id="edit-form" method="dialog">
+    <h3 id="edit-heading">New task</h3>
+    <label>Title <input name="title" required></label>
+    <label>Notes <textarea name="notes" rows="2"></textarea></label>
+    <div class="row">
+      <label>Due date <input type="date" name="due_date"></label>
+      <label>Time <input type="time" name="due_time"></label>
+      <label>Priority
+        <select name="priority">
+          <option value="0">Low</option>
+          <option value="1" selected>Normal</option>
+          <option value="2">High</option>
+        </select>
+      </label>
+    </div>
+
+    <fieldset>
+      <legend>Repeat</legend>
+      <div class="row">
+        <select name="rtype">
+          <option value="">Never</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly-day">Monthly (by date)</option>
+          <option value="monthly-nth">Monthly (by weekday)</option>
+          <option value="yearly">Yearly</option>
+          <option value="after">After I complete it</option>
+        </select>
+        <label class="inline r r-daily r-weekly r-monthly-day r-monthly-nth">every
+          <input type="number" name="interval" min="1" value="1" class="num">
+          <span class="unit"></span></label>
+        <label class="inline r r-after"><input type="number" name="after_days" min="1" value="7" class="num"> days after completion</label>
+      </div>
+      <div class="r r-weekly weekdays">
+        <label><input type="checkbox" name="wd" value="0">Mon</label>
+        <label><input type="checkbox" name="wd" value="1">Tue</label>
+        <label><input type="checkbox" name="wd" value="2">Wed</label>
+        <label><input type="checkbox" name="wd" value="3">Thu</label>
+        <label><input type="checkbox" name="wd" value="4">Fri</label>
+        <label><input type="checkbox" name="wd" value="5">Sat</label>
+        <label><input type="checkbox" name="wd" value="6">Sun</label>
+      </div>
+      <div class="r r-monthly-day row">
+        <label class="inline">on day <input type="number" name="mday" min="1" max="31" class="num"></label>
+        <label class="inline"><input type="checkbox" name="mlast"> last day of month</label>
+      </div>
+      <div class="r r-monthly-nth row">
+        <label class="inline">on the
+          <select name="nth">
+            <option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option>
+            <option value="4">4th</option><option value="-1">last</option>
+          </select>
+          <select name="nth_wd">
+            <option value="0">Monday</option><option value="1">Tuesday</option><option value="2">Wednesday</option>
+            <option value="3">Thursday</option><option value="4">Friday</option><option value="5">Saturday</option>
+            <option value="6">Sunday</option>
+          </select>
+        </label>
+      </div>
+      <div class="r r-yearly row">
+        <label class="inline">on
+          <select name="ymonth">
+            <option value="1">Jan</option><option value="2">Feb</option><option value="3">Mar</option>
+            <option value="4">Apr</option><option value="5">May</option><option value="6">Jun</option>
+            <option value="7">Jul</option><option value="8">Aug</option><option value="9">Sep</option>
+            <option value="10">Oct</option><option value="11">Nov</option><option value="12">Dec</option>
+          </select>
+          <input type="number" name="yday" min="1" max="31" class="num">
+        </label>
+      </div>
+      <p class="hint">The due date is the first occurrence. Leave it blank to start from today.</p>
+    </fieldset>
+
+    <div id="edit-stats" hidden></div>
+
+    <div class="actions">
+      <button type="button" id="edit-delete" class="danger-btn" hidden>Delete</button>
+      <span class="spacer"></span>
+      <button type="button" id="edit-cancel" class="ghost">Cancel</button>
+      <button type="submit" id="edit-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

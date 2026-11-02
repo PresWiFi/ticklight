@@ -1,0 +1,8 @@
+.venv
+data
+.env
+.git
+tests
+proxmox
+**/__pycache__
+.pytest_cache
