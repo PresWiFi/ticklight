@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
 from datetime import date, datetime, timedelta
 
 from telegram import InlineKeyboardButton as Btn
@@ -29,6 +30,10 @@ Just send a message to add a task. Examples:
 • <code>review budget every last sunday</code>
 
 <code>!!</code> = high priority, <code>!low</code> = low priority.
+
+<b>Subtasks</b>: reply to any message about a single task to add
+checklist items to it (one per line), or use <code>/sub 12 buy paint; tape</code>.
+Tap /12 on a task to see and tick its checklist.
 
 /today – overdue + today (tap to complete)
 /list – everything open
@@ -61,7 +66,17 @@ def fmt_when(t: dict, today: date) -> str:
         bits.append("🔁 " + t["recurrence_text"])
     if t.get("current_streak", 0) >= 2:
         bits.append(f"🔥{t['current_streak']}")
+    if t.get("subtasks"):
+        bits.append(f"☑ {t['subtasks_done']}/{len(t['subtasks'])}")
     return " · ".join(bits)
+
+
+def split_items(text: str) -> list[str]:
+    """Subtask titles from a message: one per line, or separated by ';'."""
+    items = []
+    for line in text.splitlines():
+        items += [x.strip(" -•*\t") for x in line.split(";")]
+    return [x for x in items if x]
 
 
 def fmt_task(t: dict, today: date) -> str:
@@ -98,13 +113,15 @@ class Bot:
         a.add_handler(CommandHandler("skip", self.cmd_action))
         a.add_handler(CommandHandler(["del", "delete"], self.cmd_action))
         a.add_handler(CommandHandler("undo", self.cmd_action))
+        a.add_handler(CommandHandler(["sub", "subtask"], self.cmd_sub))
         a.add_handler(MessageHandler(filters.Regex(r"^/\d+(@\w+)?$"), self.cmd_show))
         a.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.on_text))
         a.add_handler(CallbackQueryHandler(self.on_button))
         await a.initialize()
         await a.bot.set_my_commands([
             ("today", "Overdue + today"), ("list", "All open tasks"),
-            ("add", "Add a task"), ("help", "How to add tasks"),
+            ("add", "Add a task"), ("sub", "Add subtasks: /sub 12 a; b"),
+            ("help", "How to add tasks"),
         ])
         await a.start()
         await a.updater.start_polling(drop_pending_updates=False)
@@ -153,8 +170,12 @@ class Bot:
     async def on_text(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self.allowed(update):
             return await self._deny(update)
+        msg = update.effective_message
+        tid = self._replied_task_id(msg)
+        if tid:
+            return await self._add_subs(update, tid, split_items(msg.text))
         # Several lines = several tasks
-        lines = [ln.strip(" -•*\t") for ln in update.effective_message.text.splitlines()]
+        lines = [ln.strip(" -•*\t") for ln in msg.text.splitlines()]
         lines = [ln for ln in lines if ln]
         if len(lines) > 1:
             added = [self.tasks.quick_add(ln) for ln in lines]
@@ -164,6 +185,34 @@ class Bot:
         if lines:
             await self._add(update, lines[0])
 
+    def _replied_task_id(self, msg) -> int | None:
+        """If this message replies to a bot message about exactly one task, its id."""
+        r = msg.reply_to_message
+        if not r or not r.from_user or not r.from_user.is_bot:
+            return None
+        ids = set(re.findall(r"(?<![\w/])/(\d+)\b", r.text or ""))
+        return int(ids.pop()) if len(ids) == 1 else None
+
+    async def cmd_sub(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self.allowed(update):
+            return await self._deny(update)
+        # Keep newlines: take everything after "/sub 12"
+        m = re.match(r"/\w+(?:@\w+)?\s+/?(\d+)\s+(.+)", update.effective_message.text, re.S)
+        if not m:
+            return await update.effective_message.reply_text(
+                "Usage: /sub 12 buy paint; masking tape\n(or reply to a task message)")
+        await self._add_subs(update, int(m.group(1)), split_items(m.group(2)))
+
+    async def _add_subs(self, update: Update, tid: int, items: list[str]) -> None:
+        try:
+            t = self.tasks.add_subtasks(tid, items)
+        except NotFound:
+            return await update.effective_message.reply_text("No such task.")
+        except ValueError as e:
+            return await update.effective_message.reply_text(str(e))
+        await update.effective_message.reply_html(
+            self._detail(t), reply_markup=self._detail_kb(t))
+
     async def _add(self, update: Update, text: str) -> None:
         t = self.tasks.quick_add(text)
         when = t.pop("parsed_summary", "") or "no date"
@@ -172,7 +221,8 @@ class Bot:
             Btn("✅ Done", callback_data=f"done:{t['id']}:x"),
         ]])
         await update.effective_message.reply_html(
-            f"➕ <b>{esc(t['title'])}</b>\n<i>{esc(when)}</i>", reply_markup=kb)
+            f"➕ <b>{esc(t['title'])}</b>  /{t['id']}\n<i>{esc(when)}</i>\n"
+            "<i>Reply to this message to add subtasks.</i>", reply_markup=kb)
 
     def _today_view(self) -> tuple[str, InlineKeyboardMarkup]:
         b = self.tasks.board(self.s.upcoming_days)
@@ -233,6 +283,10 @@ class Bot:
             lines.append(esc(t["notes"]))
         if t["recurrence"]:
             lines.append(f"Streak: {t['current_streak']} (best {t['best_streak']})")
+        if t["subtasks"]:
+            lines.append("")
+            lines += [f"{'☑' if st['done'] else '☐'} {esc(st['title'])}" for st in t["subtasks"]]
+        lines.append("\n<i>Reply to add subtasks.</i>")
         if t["status"] != "open":
             lines.append(f"<i>{t['status']}</i>")
         return "\n".join(lines)
@@ -243,7 +297,9 @@ class Bot:
         if t["recurrence"]:
             row.append(Btn("⏭ Skip", callback_data=f"skip:{tid}:x"))
         row.append(Btn("🗑 Delete", callback_data=f"del:{tid}:x"))
-        return InlineKeyboardMarkup([row])
+        rows = [[Btn(f"{'☑' if st['done'] else '☐'} {st['title'][:45]}",
+                     callback_data=f"st:{st['id']}:{tid}")] for st in t["subtasks"][:40]]
+        return InlineKeyboardMarkup(rows + [row])
 
     async def cmd_action(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
         if not self.allowed(update):
@@ -290,6 +346,18 @@ class Bot:
             return await q.answer("Not authorised")
         action, tid, scope = (q.data.split(":") + ["", ""])[:3]
         tid = int(tid or 0)
+        if action == "st":  # toggle a subtask, redraw the task detail
+            try:
+                t = self.tasks.toggle_subtask(tid)
+            except NotFound:
+                return await q.answer("That subtask no longer exists")
+            await q.answer()
+            try:
+                await q.edit_message_text(self._detail(t), parse_mode=ParseMode.HTML,
+                                          reply_markup=self._detail_kb(t))
+            except Exception as e:
+                log.debug("edit failed: %s", e)
+            return
         if action == "snooze":
             self._snoozed[tid] = self.tasks.now() + timedelta(hours=1)
             self.tasks.mark_reminded(tid, None)  # make it eligible again after the snooze
@@ -358,5 +426,5 @@ class Bot:
             if t["recurrence"]:
                 row.append(Btn("⏭ Skip", callback_data=f"skip:{t['id']}:x"))
             row.append(Btn("💤 1h", callback_data=f"snooze:{t['id']}:x"))
-            await self.send_all(f"⏰ <b>{esc(t['title'])}</b> — due {t['due_time']}",
+            await self.send_all(f"⏰ <b>{esc(t['title'])}</b> — due {t['due_time']}  /{t['id']}",
                                 InlineKeyboardMarkup([row]))

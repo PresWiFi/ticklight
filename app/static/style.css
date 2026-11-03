@@ -13,7 +13,28 @@
   --low: #5d6577;
   --radius: 12px;
   --fs: 17px;
+  --shadow: 0 10px 30px rgba(0,0,0,.4);
+  color-scheme: dark;
 }
+:root.light {
+  --bg: #eef0f4;
+  --panel: #ffffff;
+  --panel-2: #f5f6f9;
+  --line: #dde1e8;
+  --text: #1b1f27;
+  --muted: #687083;
+  --accent: #2f6fe0;
+  --ok: #1e9e5f;
+  --warn: #b97d00;
+  --danger: #d93636;
+  --high: #e04a35;
+  --low: #a0a8b8;
+  --shadow: 0 10px 30px rgba(20,30,50,.15);
+  color-scheme: light;
+}
+:root.light .col { box-shadow: 0 1px 3px rgba(20,30,50,.06); }
+:root.light .task { border: 1px solid var(--line); border-left-width: 4px; }
+:root.light .task:not(.p2) { border-left-color: var(--line); }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
@@ -45,7 +66,7 @@ header {
 button { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; background: var(--accent); color: #fff; }
 button.ghost { background: var(--panel); border: 1px solid var(--line); color: var(--text); }
 button.ghost:hover { border-color: var(--accent); }
-#btn-new, #btn-display { width: 44px; height: 44px; padding: 0; font-size: 1.2em; }
+#btn-new, #btn-display, #btn-theme { width: 44px; height: 44px; padding: 0; font-size: 1.2em; }
 
 /* ---------- columns ---------- */
 main {
@@ -93,6 +114,16 @@ ul.tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-directio
 .task:hover .acts { opacity: 1; }
 .acts button { background: transparent; color: var(--muted); padding: 4px 7px; font-size: .9em; border-radius: 6px; }
 .acts button:hover { background: var(--bg); color: var(--text); }
+.chip.subs.all { color: var(--ok); }
+ul.subs { list-style: none; margin: 8px 0 2px; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: .9em; }
+ul.subs li { display: flex; align-items: center; gap: 9px; padding: 3px 6px; border-radius: 6px; cursor: pointer; }
+ul.subs li:hover { background: var(--bg); }
+ul.subs li.done span { text-decoration: line-through; color: var(--muted); }
+.sub-check {
+  flex: none; width: 17px; height: 17px; padding: 0; border-radius: 5px; font-size: 12px; line-height: 1;
+  border: 2px solid var(--muted); background: transparent; color: #fff; cursor: pointer;
+}
+li.done > .sub-check { background: var(--ok); border-color: var(--ok); }
 .compact .task { padding: 8px 10px; }
 .done-list .task { opacity: .55; }
 .done-list .title { text-decoration: line-through; }
@@ -103,15 +134,15 @@ body.display { --fs: 20px; }
 body.display #quick, body.display #btn-new, body.display .acts { display: none; }
 body.display header { align-items: center; }
 body.display .header-actions { margin-left: auto; margin-top: 0; }
-body.display #btn-display { opacity: .25; }
-body.display #btn-display:hover { opacity: 1; }
+body.display #btn-display, body.display #btn-theme { opacity: .25; }
+body.display #btn-display:hover, body.display #btn-theme:hover { opacity: 1; }
 
 /* ---------- toast / offline ---------- */
 #toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
   background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px;
   padding: 10px 12px 10px 18px; display: flex; gap: 16px; align-items: center;
-  box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  box-shadow: var(--shadow);
 }
 #toast-undo { padding: 6px 12px; }
 #offline { position: fixed; top: 0; left: 0; right: 0; background: var(--danger); color: #fff; text-align: center; padding: 4px; font-size: .85em; }
@@ -121,6 +152,7 @@ dialog {
   background: var(--panel); color: var(--text); border: 1px solid var(--line);
   border-radius: 16px; padding: 22px 24px; width: min(560px, 94vw);
 }
+dialog { max-height: 92vh; overflow-y: auto; }
 dialog::backdrop { background: rgba(0,0,0,.55); }
 dialog h3 { margin: 0 0 14px; }
 dialog label { display: flex; flex-direction: column; gap: 4px; font-size: .85em; color: var(--muted); margin-bottom: 12px; flex: 1; }
@@ -139,6 +171,14 @@ legend { color: var(--muted); font-size: .85em; padding: 0 6px; }
 .weekdays label:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, var(--bg)); }
 .weekdays input { display: none; }
 .hint { color: var(--muted); font-size: .78em; margin: 0 0 6px; }
+#edit-subs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+#edit-subs li { display: flex; align-items: center; gap: 8px; }
+#edit-subs li input { flex: 1; padding: 5px 8px; font-size: .92em; }
+#sub-input { font-size: .92em; }
+#edit-subs li.done input { text-decoration: line-through; color: var(--muted); }
+.sub-del { background: transparent; color: var(--muted); padding: 4px 8px; }
+.sub-del:hover { color: var(--danger); }
+#sub-input { margin-bottom: 8px; }
 #edit-stats { font-size: .85em; color: var(--muted); margin-bottom: 14px; }
 #edit-stats .hist { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
 #edit-stats .hist span { width: 12px; height: 12px; border-radius: 3px; background: var(--ok); }

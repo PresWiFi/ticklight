@@ -59,7 +59,7 @@ class Tasks:
     def _row(self, task_id: int) -> dict:
         row = self.db.one("SELECT * FROM tasks WHERE id=?", (task_id,))
         if not row:
-            raise NotFound(task_id)
+            raise NotFound(f"task {task_id}")
         return self._decorate(dict(row))
 
     def get(self, task_id: int) -> dict:
@@ -83,6 +83,8 @@ class Tasks:
         if grace and self.today() >= grace:
             streak = 0  # missed an occurrence, streak is broken
         t["current_streak"] = streak
+        t["subtasks"] = self.subtasks(t["id"])
+        t["subtasks_done"] = sum(1 for st in t["subtasks"] if st["done"])
         return t
 
     def _first_due(self, rule: dict | None, due: date | None, due_time: str | None) -> tuple[date | None, date | None]:
@@ -171,12 +173,13 @@ class Tasks:
             return t
         today, stamp = self.today(), self._stamp()
         rule, due = t["recurrence"], _d(t["due_date"])
+        snapshot = json.dumps({st["id"]: st["done"] for st in t["subtasks"]})
         with self.db.tx() as c:
             c.execute(
                 "INSERT INTO completions(task_id, done_at, for_date, skipped, prev_due,"
-                " prev_streak, prev_best, prev_status) VALUES(?,?,?,?,?,?,?,?)",
+                " prev_streak, prev_best, prev_status, prev_subtasks) VALUES(?,?,?,?,?,?,?,?,?)",
                 (task_id, stamp, t["due_date"], int(skipped), t["due_date"],
-                 t["streak"], t["best_streak"], t["status"]))
+                 t["streak"], t["best_streak"], t["status"], snapshot))
             if not rule:
                 if skipped:
                     raise ValueError("only recurring tasks can be skipped")
@@ -198,6 +201,8 @@ class Tasks:
                     "UPDATE tasks SET due_date=?, streak=?, best_streak=?, reminded_for=NULL,"
                     " completed_at=?, updated_at=? WHERE id=?",
                     (nxt.isoformat(), streak, best, stamp, stamp, task_id))
+                # Each occurrence starts with a fresh checklist
+                c.execute("UPDATE subtasks SET done=0 WHERE task_id=?", (task_id,))
         self._changed()
         return self.get(task_id)
 
@@ -215,6 +220,9 @@ class Tasks:
                 " completed_at=NULL, updated_at=? WHERE id=?",
                 (last["prev_status"], last["prev_due"], last["prev_streak"],
                  last["prev_best"], self._stamp(), task_id))
+            for sid, done in json.loads(last["prev_subtasks"] or "{}").items():
+                c.execute("UPDATE subtasks SET done=? WHERE id=? AND task_id=?",
+                          (int(done), int(sid), task_id))
             c.execute("DELETE FROM completions WHERE id=?", (last["id"],))
         self._changed()
         return self.get(task_id)
@@ -235,6 +243,63 @@ class Tasks:
                       (self._stamp(), task_id))
         self._changed()
         return self.get(task_id)
+
+    # ---------- subtasks ----------
+    def subtasks(self, task_id: int) -> list[dict]:
+        rows = self.db.query(
+            "SELECT id, title, done FROM subtasks WHERE task_id=? ORDER BY position, id",
+            (task_id,))
+        return [{"id": r["id"], "title": r["title"], "done": bool(r["done"])} for r in rows]
+
+    def _sub_row(self, sub_id: int):
+        row = self.db.one("SELECT * FROM subtasks WHERE id=?", (sub_id,))
+        if not row:
+            raise NotFound(f"subtask {sub_id}")
+        return row
+
+    def add_subtasks(self, task_id: int, titles: list[str] | str) -> dict:
+        """Add one or more checklist items to an existing task."""
+        self._row(task_id)
+        if isinstance(titles, str):
+            titles = [titles]
+        titles = [t.strip() for t in titles if t and t.strip()]
+        if not titles:
+            raise ValueError("subtask title is required")
+        stamp = self._stamp()
+        with self.db.tx() as c:
+            pos = c.execute("SELECT COALESCE(MAX(position), 0) FROM subtasks WHERE task_id=?",
+                            (task_id,)).fetchone()[0]
+            for i, title in enumerate(titles, 1):
+                c.execute("INSERT INTO subtasks(task_id, title, position, created_at)"
+                          " VALUES(?,?,?,?)", (task_id, title, pos + i, stamp))
+        self._changed()
+        return self.get(task_id)
+
+    def update_subtask(self, sub_id: int, title: str | None = None,
+                       done: bool | None = None) -> dict:
+        """Rename and/or tick a subtask. done=None with no title toggles it."""
+        row = self._sub_row(sub_id)
+        if title is not None and not title.strip():
+            raise ValueError("subtask title is required")
+        if done is None and title is None:
+            done = not row["done"]
+        with self.db.tx() as c:
+            if title is not None:
+                c.execute("UPDATE subtasks SET title=? WHERE id=?", (title.strip(), sub_id))
+            if done is not None:
+                c.execute("UPDATE subtasks SET done=? WHERE id=?", (int(done), sub_id))
+        self._changed()
+        return self.get(row["task_id"])
+
+    def toggle_subtask(self, sub_id: int) -> dict:
+        return self.update_subtask(sub_id)
+
+    def delete_subtask(self, sub_id: int) -> dict:
+        row = self._sub_row(sub_id)
+        with self.db.tx() as c:
+            c.execute("DELETE FROM subtasks WHERE id=?", (sub_id,))
+        self._changed()
+        return self.get(row["task_id"])
 
     # ---------- queries ----------
     def open_tasks(self) -> list[dict]:

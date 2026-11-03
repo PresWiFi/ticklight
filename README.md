@@ -9,7 +9,11 @@ streaks, a morning summary, and due-time reminders.
 - **Quick add**: type `call dentist tomorrow 3pm !!` and a live preview shows what will be created.
 - **Recurring tasks**: daily / every N days, weekly on chosen days, monthly by date or "2nd Tuesday",
   yearly, and *N days after I complete it*. Complete, skip, or undo any occurrence.
+- **Subtasks**: add a checklist to any task. Tick items right on the dashboard (Today/Overdue
+  show the full list; other columns show `☑ 2/5`). On recurring tasks the checklist resets
+  for each new occurrence.
 - **Streaks** for recurring tasks (🔥), with history in the edit dialog.
+- **Light and dark mode**: follows your system until you pick one with ☀/☾ (or `t`).
 - **Telegram bot**: add tasks by messaging it, tap buttons to complete, get a morning summary and
   reminders with Done / Skip / Snooze buttons.
 - Python (FastAPI) + a single SQLite file. No build step, about 60 MB RAM.
@@ -36,11 +40,14 @@ streaks, a morning summary, and due-time reminders.
 Priority: `!!` or `!high` = high, `!low` = low.
 In Telegram you can send several lines at once to add several tasks.
 
-**Keyboard** (dashboard): `/` quick add · `n` new task with full options · `d` toggle display mode · `Esc` clear.
-Click a task's title to edit it. Hover a task to skip or delete it.
+**Keyboard** (dashboard): `/` quick add · `n` new task with full options · `d` toggle display mode ·
+`t` light/dark · `Esc` clear.
+Click a task's title to edit it, including its subtasks. Hover a task to add subtasks (☑+), skip, or delete it.
+In the subtask box, paste several lines to add several items at once.
 
 **Display mode** (⛶ button or `?display` in the URL) hides the controls and uses larger text.
-For a kiosk-style tab: `chromium --app=http://ticklight:8080/?display` (or press F11).
+For a kiosk-style tab: `chromium --app=http://ticklight:8080/?display&theme=dark` (or press F11).
+`?theme=light` / `?theme=dark` sets the theme and remembers it.
 
 ## Telegram setup
 
@@ -48,8 +55,12 @@ For a kiosk-style tab: `chromium --app=http://ticklight:8080/?display` (or press
 2. Put it in `TELEGRAM_BOT_TOKEN`, start the app, then send `/id` to your bot.
 3. Put that number in `TELEGRAM_ALLOWED_USERS` and restart. The bot ignores everyone else.
 
-Commands: `/today`, `/list`, `/done 12`, `/skip 12`, `/del 12`, `/undo 12`, `/help`.
-Any plain message becomes a task. Tap `/12` in a list to see that task's buttons.
+Commands: `/today`, `/list`, `/done 12`, `/skip 12`, `/del 12`, `/undo 12`, `/sub 12 …`, `/help`.
+Any plain message becomes a task. Tap `/12` in a list to see that task's checklist and buttons.
+
+**Subtasks from Telegram:** *reply* to any bot message about a single task (the "➕ added" confirmation,
+a task detail, a reminder) and each line of your reply becomes a subtask. Or use
+`/sub 12 buy paint; masking tape`. Tap ☐ buttons in the task detail to tick items.
 
 ## Deploy with Docker
 
@@ -117,6 +128,9 @@ GET    /api/tasks/{id}            includes completion history
 PATCH  /api/tasks/{id}
 DELETE /api/tasks/{id}
 POST   /api/tasks/{id}/complete | skip | undo | restore
+POST   /api/tasks/{id}/subtasks   {"title": "..."} or {"titles": ["...", "..."]}
+PATCH  /api/subtasks/{id}         {"done": true} and/or {"title": "..."}
+DELETE /api/subtasks/{id}
 ```
 
 The quick endpoint works with an iOS Shortcut or Home Assistant `rest_command`, e.g.
@@ -134,7 +148,7 @@ Recurrence rules (for `POST`/`PATCH`):
   Completing it early moves it to the occurrence after the current one.
 - The streak goes up if you complete it before the next occurrence arrives. It breaks if an occurrence
   passes without a completion, or if you skip.
-- Undo restores the previous due date and streak.
+- Undo restores the previous due date, streak, and checklist.
 
 ## Development
 

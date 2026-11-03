@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS completions (
 CREATE INDEX IF NOT EXISTS idx_completions_task ON completions(task_id, id);
 CREATE INDEX IF NOT EXISTS idx_completions_done ON completions(done_at);
 
+CREATE TABLE IF NOT EXISTS subtasks (
+    id          INTEGER PRIMARY KEY,
+    task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    done        INTEGER NOT NULL DEFAULT 0,
+    position    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_subtasks_task ON subtasks(task_id, position);
+
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT
@@ -53,7 +63,15 @@ class DB:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.lock = threading.RLock()
+
+    def _migrate(self) -> None:
+        """Bring databases created by older versions up to date."""
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(completions)")}
+        if "prev_subtasks" not in cols:
+            # JSON {subtask_id: done} so undoing a completion restores the checklist
+            self.conn.execute("ALTER TABLE completions ADD COLUMN prev_subtasks TEXT")
 
     @contextmanager
     def tx(self):

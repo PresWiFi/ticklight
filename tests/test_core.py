@@ -174,3 +174,58 @@ def test_update_reschedules(env):
     assert t["due_date"] == "2026-11-05" and t["recurrence_text"] == "weekly on Thu"
     t = tasks.update(t["id"], {"recurrence": None, "due_date": None})
     assert t["due_date"] is None and t["recurrence"] is None
+
+
+# ---------- subtasks ----------
+def test_subtasks_crud(env):
+    tasks, _ = env
+    t = tasks.quick_add("paint fence")
+    t = tasks.add_subtasks(t["id"], ["buy paint", " ", "sand"])
+    assert [s["title"] for s in t["subtasks"]] == ["buy paint", "sand"]
+    assert t["subtasks_done"] == 0
+    sid = t["subtasks"][0]["id"]
+    t = tasks.toggle_subtask(sid)
+    assert t["subtasks"][0]["done"] and t["subtasks_done"] == 1
+    t = tasks.update_subtask(sid, title="buy green paint")
+    assert t["subtasks"][0] == {"id": sid, "title": "buy green paint", "done": True}
+    t = tasks.add_subtasks(t["id"], "brushes")
+    assert [s["title"] for s in t["subtasks"]][-1] == "brushes"
+    t = tasks.delete_subtask(sid)
+    assert len(t["subtasks"]) == 2
+    with pytest.raises(ValueError):
+        tasks.add_subtasks(t["id"], ["", "  "])
+
+
+def test_recurring_checklist_resets_and_undo_restores(env):
+    tasks, _ = env
+    t = tasks.quick_add("weekly review every fri")
+    t = tasks.add_subtasks(t["id"], ["inbox zero", "plan week"])
+    tasks.toggle_subtask(t["subtasks"][0]["id"])
+    t = tasks.complete(t["id"])
+    assert t["subtasks_done"] == 0  # fresh checklist for next occurrence
+    t = tasks.undo_complete(t["id"])
+    assert [s["done"] for s in t["subtasks"]] == [True, False]
+
+
+def test_one_off_keeps_checklist_and_board_includes_it(env):
+    tasks, _ = env
+    t = tasks.quick_add("pack today")
+    t = tasks.add_subtasks(t["id"], ["passport"])
+    tasks.toggle_subtask(t["subtasks"][0]["id"])
+    b = tasks.board(7)
+    assert b["today"][0]["subtasks"][0]["done"]
+    t = tasks.complete(t["id"])
+    assert t["subtasks_done"] == 1
+
+
+def test_migration_adds_column(tmp_path):
+    import sqlite3
+    path = str(tmp_path / "old.db")
+    old = sqlite3.connect(path)
+    old.executescript("CREATE TABLE completions (id INTEGER PRIMARY KEY, task_id INTEGER, done_at TEXT,"
+                      " for_date TEXT, skipped INTEGER, prev_due TEXT, prev_streak INTEGER,"
+                      " prev_best INTEGER, prev_status TEXT);")
+    old.close()
+    db = DB(path)
+    cols = {r["name"] for r in db.query("PRAGMA table_info(completions)")}
+    assert "prev_subtasks" in cols

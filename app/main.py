@@ -85,7 +85,7 @@ def auth(request: Request) -> None:
 
 @app.exception_handler(NotFound)
 async def not_found(_: Request, exc: NotFound):
-    return JSONResponse({"detail": f"task {exc} not found"}, status_code=404)
+    return JSONResponse({"detail": f"{exc} not found"}, status_code=404)
 
 
 @app.exception_handler(ValueError)
@@ -174,6 +174,27 @@ def update_task(task_id: int, body: TaskIn):
 @app.delete("/api/tasks/{task_id}", dependencies=api)
 def delete_task(task_id: int):
     return tasks.delete(task_id)
+
+
+class SubtaskIn(BaseModel):
+    title: str | None = None
+    titles: list[str] | None = None
+    done: bool | None = None
+
+
+@app.post("/api/tasks/{task_id}/subtasks", dependencies=api, status_code=201)
+def add_subtasks(task_id: int, body: SubtaskIn):
+    return tasks.add_subtasks(task_id, body.titles or [body.title or ""])
+
+
+@app.patch("/api/subtasks/{sub_id}", dependencies=api)
+def update_subtask(sub_id: int, body: SubtaskIn):
+    return tasks.update_subtask(sub_id, body.title, body.done)
+
+
+@app.delete("/api/subtasks/{sub_id}", dependencies=api)
+def delete_subtask(sub_id: int):
+    return tasks.delete_subtask(sub_id)
 
 
 @app.post("/api/tasks/{task_id}/{action}", dependencies=api)

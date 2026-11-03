@@ -6,6 +6,16 @@
 <title>Ticklight</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>">
 <link rel="stylesheet" href="/static/style.css">
+<script>
+  // Apply the saved theme (or the system one) before first paint
+  (function () {
+    var q = new URLSearchParams(location.search).get("theme");
+    if (q === "light" || q === "dark") localStorage.setItem("ticklight-theme", q);
+    var t = localStorage.getItem("ticklight-theme");
+    if (t === "light" || (!t && matchMedia("(prefers-color-scheme: light)").matches))
+      document.documentElement.classList.add("light");
+  })();
+</script>
 </head>
 <body>
 <header>
@@ -20,6 +30,7 @@
   <div class="header-actions">
     <div id="progress" title="Done today"></div>
     <button id="btn-new" class="ghost" title="New task with full options (n)">＋</button>
+    <button id="btn-theme" class="ghost" title="Light / dark mode (t)">☀</button>
     <button id="btn-display" class="ghost" title="Toggle display mode (d)">⛶</button>
   </div>
 </header>
@@ -129,6 +140,13 @@
         </label>
       </div>
       <p class="hint">The due date is the first occurrence. Leave it blank to start from today.</p>
+    </fieldset>
+
+    <fieldset class="subs-fs">
+      <legend id="subs-legend">Subtasks</legend>
+      <ul id="edit-subs"></ul>
+      <input id="sub-input" placeholder="Add a subtask, press Enter (paste lines to add several)">
+      <p class="hint" id="subs-hint" hidden>The checklist resets each time this recurring task comes round.</p>
     </fieldset>
 
     <div id="edit-stats" hidden></div>

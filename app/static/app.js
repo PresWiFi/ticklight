@@ -63,11 +63,16 @@ function taskEl(t, opts = {}) {
     }
     if (t.recurrence_text) meta.append(el("span", "chip", "🔁 " + t.recurrence_text));
     if (t.current_streak >= 2) meta.append(el("span", "chip streak", `🔥 ${t.current_streak}`));
+    if (t.subtasks && t.subtasks.length) {
+      const all = t.subtasks_done === t.subtasks.length;
+      meta.append(el("span", "chip subs" + (all ? " all" : ""), `☑ ${t.subtasks_done}/${t.subtasks.length}`));
+    }
   } else {
     if (t.skipped) meta.append(el("span", "chip", "skipped"));
     else if (t.streak >= 2 && t.recurrence) meta.append(el("span", "chip streak", `🔥 ${t.streak}`));
   }
   if (meta.childElementCount) body.append(meta);
+  if (opts.checklist && !opts.done && t.subtasks && t.subtasks.length) body.append(checklistEl(t));
   body.onclick = () => openEditor(t.id);
   li.append(body);
 
@@ -79,6 +84,10 @@ function taskEl(t, opts = {}) {
       skip.onclick = (e) => { e.stopPropagation(); action(t, "skip", li, `Skipped “${t.title}”`); };
       acts.append(skip);
     }
+    const sub = el("button", "", "☑+");
+    sub.title = "Add subtasks";
+    sub.onclick = (e) => { e.stopPropagation(); openEditor(t.id, { focusSubs: true }); };
+    acts.append(sub);
     const del = el("button", "", "🗑");
     del.title = "Delete";
     del.onclick = (e) => { e.stopPropagation(); remove(t, li); };
@@ -86,6 +95,25 @@ function taskEl(t, opts = {}) {
     li.append(acts);
   }
   return li;
+}
+
+// Inline checklist shown under tasks in the Today/Overdue column
+function checklistEl(t) {
+  const ul = el("ul", "subs");
+  for (const st of t.subtasks) {
+    const li = el("li", st.done ? "done" : "");
+    const box = el("button", "sub-check", st.done ? "✓" : "");
+    box.title = st.done ? "Untick" : "Tick";
+    li.append(box, el("span", "", st.title));
+    li.onclick = async (e) => {
+      e.stopPropagation();
+      li.classList.toggle("done");
+      await api("PATCH", `/api/subtasks/${st.id}`, { done: !st.done }).catch((err) => alert(err.message));
+      await load();
+    };
+    ul.append(li);
+  }
+  return ul;
 }
 
 function fill(id, tasks, opts) {
@@ -98,8 +126,8 @@ function fill(id, tasks, opts) {
 function render() {
   const b = board;
   $("#overdue-wrap").hidden = !b.overdue.length;
-  fill("overdue", b.overdue, { showDate: true });
-  fill("today", b.today, {});
+  fill("overdue", b.overdue, { showDate: true, checklist: true });
+  fill("today", b.today, { checklist: true });
   $("#today-empty").hidden = !!(b.today.length || b.overdue.length);
 
   // upcoming grouped by day
@@ -266,8 +294,73 @@ function formToRule() {
   }
 }
 
-async function openEditor(id) {
+// Subtasks in the editor. Existing tasks save each change straight away;
+// a new task keeps them in `pendingSubs` and saves them after the task is created.
+let editSubs = [];
+let pendingSubs = [];
+
+function renderEditSubs() {
+  const ul = $("#edit-subs");
+  ul.replaceChildren();
+  const items = editing ? editSubs : pendingSubs.map((title, i) => ({ id: i, title, done: false }));
+  for (const st of items) {
+    const li = el("li", st.done ? "done" : "");
+    const box = el("button", "sub-check", st.done ? "✓" : "");
+    box.type = "button";
+    box.disabled = !editing;
+    box.onclick = async () => {
+      const t = await api("PATCH", `/api/subtasks/${st.id}`, { done: !st.done });
+      editSubs = t.subtasks; renderEditSubs(); load();
+    };
+    const input = el("input");
+    input.value = st.title;
+    input.onchange = async () => {
+      if (!input.value.trim()) return;
+      if (editing) { const t = await api("PATCH", `/api/subtasks/${st.id}`, { title: input.value }); editSubs = t.subtasks; load(); }
+      else pendingSubs[st.id] = input.value;
+    };
+    input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); input.blur(); } };
+    const del = el("button", "sub-del", "✕");
+    del.type = "button";
+    del.title = "Remove";
+    del.onclick = async () => {
+      if (editing) { const t = await api("DELETE", `/api/subtasks/${st.id}`); editSubs = t.subtasks; load(); }
+      else pendingSubs.splice(st.id, 1);
+      renderEditSubs();
+    };
+    li.append(box, input, del);
+    ul.append(li);
+  }
+  const done = items.filter((x) => x.done).length;
+  $("#subs-legend").textContent = items.length ? `Subtasks ${done}/${items.length}` : "Subtasks";
+}
+
+$("#sub-input").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const title = e.target.value.trim();
+  if (!title) return;
+  e.target.value = "";
+  if (editing) {
+    const t = await api("POST", `/api/tasks/${editing}/subtasks`, { title }).catch((err) => alert(err.message));
+    if (t) { editSubs = t.subtasks; load(); }
+  } else pendingSubs.push(title);
+  renderEditSubs();
+});
+// Pasting several lines adds one subtask per line
+$("#sub-input").addEventListener("paste", async (e) => {
+  const lines = (e.clipboardData.getData("text") || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  if (lines.length < 2) return;
+  e.preventDefault();
+  if (editing) { const t = await api("POST", `/api/tasks/${editing}/subtasks`, { titles: lines }); editSubs = t.subtasks; load(); }
+  else pendingSubs.push(...lines);
+  renderEditSubs();
+});
+
+async function openEditor(id, opts = {}) {
   editing = id || null;
+  editSubs = [];
+  pendingSubs = [];
   form.reset();
   $("#edit-heading").textContent = id ? "Edit task" : "New task";
   $("#edit-delete").hidden = !id;
@@ -280,6 +373,7 @@ async function openEditor(id) {
     form.due_date.value = t.due_date || "";
     form.due_time.value = t.due_time || "";
     form.priority.value = t.priority;
+    editSubs = t.subtasks || [];
     if (t.recurrence) {
       const s = $("#edit-stats");
       s.hidden = false;
@@ -297,8 +391,10 @@ async function openEditor(id) {
     form.priority.value = 1;
   }
   ruleToForm(t && t.recurrence, t && t.due_date);
+  renderEditSubs();
+  $("#subs-hint").hidden = !(t && t.recurrence);
   dlg.showModal();
-  form.title.focus();
+  (opts.focusSubs ? $("#sub-input") : form.title).focus();
 }
 
 $("#edit-cancel").onclick = () => dlg.close();
@@ -319,7 +415,10 @@ form.addEventListener("submit", async (e) => {
   };
   try {
     if (editing) await api("PATCH", `/api/tasks/${editing}`, body);
-    else await api("POST", "/api/tasks", body);
+    else {
+      const t = await api("POST", "/api/tasks", body);
+      if (pendingSubs.length) await api("POST", `/api/tasks/${t.id}/subtasks`, { titles: pendingSubs });
+    }
     dlg.close();
     await load();
   } catch (err) { alert(err.message); }
@@ -330,6 +429,24 @@ function setDisplay(on) {
   document.body.classList.toggle("display", on);
   localStorage.setItem("ticklight-display", on ? "1" : "");
 }
+// Light/dark: follows the system until you pick one, then remembers your choice
+const themeQuery = matchMedia("(prefers-color-scheme: light)");
+function applyTheme() {
+  const saved = localStorage.getItem("ticklight-theme");
+  const light = saved ? saved === "light" : themeQuery.matches;
+  document.documentElement.classList.toggle("light", light);
+  $("#btn-theme").textContent = light ? "☾" : "☀";
+  $("#btn-theme").title = `Switch to ${light ? "dark" : "light"} mode (t)`;
+}
+function toggleTheme() {
+  const light = !document.documentElement.classList.contains("light");
+  localStorage.setItem("ticklight-theme", light ? "light" : "dark");
+  applyTheme();
+}
+themeQuery.addEventListener("change", applyTheme);
+$("#btn-theme").onclick = toggleTheme;
+applyTheme();
+
 $("#btn-display").onclick = () => setDisplay(!document.body.classList.contains("display"));
 $("#btn-new").onclick = () => openEditor();
 setDisplay(!!localStorage.getItem("ticklight-display") || new URLSearchParams(location.search).has("display"));
@@ -341,6 +458,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "/") { e.preventDefault(); setDisplay(false); qi.focus(); }
   else if (e.key === "n") { e.preventDefault(); openEditor(); }
+  else if (e.key === "t") toggleTheme();
   else if (e.key === "d") setDisplay(!document.body.classList.contains("display"));
 });
 

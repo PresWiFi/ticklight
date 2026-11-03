@@ -42,3 +42,21 @@ def test_api_token(tmp_path):
         assert c.get("/api/board").status_code == 401
         assert c.get("/api/board", headers={"Authorization": "Bearer s3cret"}).status_code == 200
         assert c.get("/api/health").status_code == 200
+
+
+def test_subtask_api(tmp_path):
+    with make_client(tmp_path) as c:
+        t = c.post("/api/quick", json={"text": "pack bag"}).json()
+        r = c.post(f"/api/tasks/{t['id']}/subtasks", json={"title": "charger"})
+        assert r.status_code == 201
+        t = c.post(f"/api/tasks/{t['id']}/subtasks", json={"titles": ["socks", "book"]}).json()
+        assert [s["title"] for s in t["subtasks"]] == ["charger", "socks", "book"]
+        sid = t["subtasks"][1]["id"]
+        t = c.patch(f"/api/subtasks/{sid}", json={"done": True}).json()
+        assert t["subtasks_done"] == 1
+        t = c.delete(f"/api/subtasks/{sid}").json()
+        assert len(t["subtasks"]) == 2
+        assert c.patch("/api/subtasks/999", json={"done": True}).status_code == 404
+        assert c.post("/api/tasks/999/subtasks", json={"title": "x"}).status_code == 404
+        assert c.post(f"/api/tasks/{t['id']}/subtasks", json={"title": ""}).status_code == 400
+        assert c.post(f"/api/tasks/{t['id']}/complete").status_code == 200  # other actions still route
