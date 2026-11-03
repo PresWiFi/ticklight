@@ -31,6 +31,9 @@ Just send a message to add a task. Examples:
 
 <code>!!</code> = high priority, <code>!low</code> = low priority.
 
+<b>Many at once</b>: send several lines, one task per line. Start a line
+with <code>+</code> (or indent it) to make it a subtask of the line above.
+
 <b>Subtasks</b>: reply to any message about a single task to add
 checklist items to it (one per line), or use <code>/sub 12 buy paint; tape</code>.
 Tap /12 on a task to see and tick its checklist.
@@ -174,16 +177,17 @@ class Bot:
         tid = self._replied_task_id(msg)
         if tid:
             return await self._add_subs(update, tid, split_items(msg.text))
-        # Several lines = several tasks
-        lines = [ln.strip(" -•*\t") for ln in msg.text.splitlines()]
-        lines = [ln for ln in lines if ln]
-        if len(lines) > 1:
-            added = [self.tasks.quick_add(ln) for ln in lines]
+        # Several lines = several tasks (indented or "+" lines are subtasks)
+        if len([ln for ln in msg.text.splitlines() if ln.strip()]) > 1:
+            try:
+                added = self.tasks.bulk_add(msg.text)
+            except ValueError as e:
+                return await msg.reply_text(str(e))
             today = self.tasks.today()
             body = "\n".join(fmt_task(t, today) for t in added)
-            return await update.effective_message.reply_html(f"Added {len(added)} tasks:\n{body}")
-        if lines:
-            await self._add(update, lines[0])
+            return await msg.reply_html(f"Added {len(added)} task{'s' if len(added) != 1 else ''}:\n{body}")
+        if msg.text.strip():
+            await self._add(update, msg.text.strip(" -•*\t"))
 
     def _replied_task_id(self, msg) -> int | None:
         """If this message replies to a bot message about exactly one task, its id."""

@@ -134,6 +134,38 @@ class Tasks:
         task["parsed_summary"] = p.summary()
         return task
 
+    def bulk_add(self, text: str, append: str = "", dry_run: bool = False) -> list[dict]:
+        """Add many tasks at once: one per line, indented or "+" lines are subtasks.
+
+        `append` is added to every line before parsing (e.g. "tomorrow !!"); anything
+        a line says itself wins over it. With dry_run, nothing is saved.
+        """
+        items = parser.split_bulk(text)
+        if len(items) > parser.MAX_BULK:
+            raise ValueError(f"too many tasks at once (max {parser.MAX_BULK})")
+        today = self.today()
+        extra = parser.parse(append, today) if append.strip() else None
+        out = []
+        for line, subs in items:
+            p = parser.parse(line, today)
+            if extra:  # fill in only what the line didn't say itself
+                if not (p.due_date or p.recurrence):
+                    p.due_date, p.recurrence = extra.due_date, extra.recurrence
+                p.due_time = p.due_time or extra.due_time
+                if p.priority == 1:
+                    p.priority = extra.priority
+            if dry_run:
+                out.append({"title": p.title, "summary": p.summary(), "subtasks": subs,
+                            "priority": p.priority})
+                continue
+            t = self.create(p.title, priority=p.priority, due_date=p.due_date,
+                            due_time=p.due_time, recurrence_rule=p.recurrence)
+            if subs:
+                t = self.add_subtasks(t["id"], subs)
+            t["parsed_summary"] = p.summary()
+            out.append(t)
+        return out
+
     def update(self, task_id: int, changes: dict) -> dict:
         t = self._row(task_id)
         new = {k: changes[k] for k in FIELDS if k in changes}

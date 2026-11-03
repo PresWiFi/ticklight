@@ -66,7 +66,7 @@ header {
 button { cursor: pointer; border: 0; border-radius: 10px; padding: 9px 16px; background: var(--accent); color: #fff; }
 button.ghost { background: var(--panel); border: 1px solid var(--line); color: var(--text); }
 button.ghost:hover { border-color: var(--accent); }
-#btn-new, #btn-display, #btn-theme { width: 44px; height: 44px; padding: 0; font-size: 1.2em; }
+#btn-new, #btn-display, #btn-theme, #btn-bulk { width: 44px; height: 44px; padding: 0; font-size: 1.2em; }
 
 /* ---------- columns ---------- */
 main {
@@ -131,7 +131,7 @@ li.done > .sub-check { background: var(--ok); border-color: var(--ok); }
 
 /* ---------- display mode: bigger, fewer controls ---------- */
 body.display { --fs: 20px; }
-body.display #quick, body.display #btn-new, body.display .acts { display: none; }
+body.display #quick, body.display #btn-new, body.display #btn-bulk, body.display .acts { display: none; }
 body.display header { align-items: center; }
 body.display .header-actions { margin-left: auto; margin-top: 0; }
 body.display #btn-display, body.display #btn-theme { opacity: .25; }
@@ -192,3 +192,22 @@ legend { color: var(--muted); font-size: .85em; padding: 0 6px; }
   header { flex-wrap: wrap; }
   #quick { order: 3; flex-basis: 100%; }
 }
+
+/* ---------- bulk add ---------- */
+dialog#bulk { width: min(980px, 96vw); }
+.bulk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+.bulk-left { display: flex; flex-direction: column; }
+#bulk-text {
+  width: 100%; resize: vertical; min-height: 300px; margin-bottom: 12px;
+  font: .9em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2;
+}
+.bulk-right { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; max-height: 420px; overflow-y: auto; }
+.bulk-preview-h { font-size: .75em; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 650; margin-bottom: 8px; }
+#bulk-preview { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 8px; font-size: .92em; }
+#bulk-preview li::marker { color: var(--muted); }
+#bulk-preview .bp-title.p2 { color: var(--high); }
+#bulk-preview .bp-meta { color: var(--muted); font-size: .85em; }
+#bulk-preview ul { margin: 3px 0 0; padding-left: 4px; list-style: none; color: var(--muted); font-size: .9em; }
+#bulk-preview ul li::before { content: "☐ "; }
+code { background: var(--bg); border-radius: 4px; padding: 0 4px; }
+@media (max-width: 800px) { .bulk-grid { grid-template-columns: 1fr; } }

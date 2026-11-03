@@ -29,6 +29,7 @@
   </form>
   <div class="header-actions">
     <div id="progress" title="Done today"></div>
+    <button id="btn-bulk" class="ghost" title="Add many tasks at once (b)">☰</button>
     <button id="btn-new" class="ghost" title="New task with full options (n)">＋</button>
     <button id="btn-theme" class="ghost" title="Light / dark mode (t)">☀</button>
     <button id="btn-display" class="ghost" title="Toggle display mode (d)">⛶</button>
@@ -156,6 +157,39 @@
       <span class="spacer"></span>
       <button type="button" id="edit-cancel" class="ghost">Cancel</button>
       <button type="submit" id="edit-save">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="bulk">
+  <form id="bulk-form" method="dialog">
+    <h3>Add many tasks</h3>
+    <p class="hint">One task per line, written like quick add. Indent a line or start it with
+      <code>+</code> to make it a subtask of the task above. Pasted lists and checklists work as-is.</p>
+    <div class="bulk-grid">
+      <div class="bulk-left">
+        <textarea id="bulk-text" rows="14" spellcheck="false" placeholder="Plan party saturday !!
+  + send invites
+  + order cake
+call mum tomorrow 6pm
+water plants every 3 days
+- book flights
+- renew passport !low"></textarea>
+        <label>Add to every task
+          <input id="bulk-append" placeholder="e.g. tomorrow !!  (a line's own date or priority wins)">
+        </label>
+      </div>
+      <div class="bulk-right">
+        <div class="bulk-preview-h">Preview</div>
+        <ol id="bulk-preview"></ol>
+        <div id="bulk-empty" class="empty">Start typing — each line becomes a task.</div>
+      </div>
+    </div>
+    <div class="actions">
+      <span class="hint" style="margin:0">Ctrl+Enter to add</span>
+      <span class="spacer"></span>
+      <button type="button" id="bulk-cancel" class="ghost">Cancel</button>
+      <button type="submit" id="bulk-save" disabled>Add tasks</button>
     </div>
   </form>
 </dialog>

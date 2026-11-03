@@ -275,3 +275,33 @@ def parse(text: str, today: date) -> Parsed:
         p.title = text.strip()
     return p
 
+
+
+BULLET_RE = re.compile(r"^(?:[-•*+]|\d+[.)]|\[[ xX]?\])\s*")
+MAX_BULK = 200
+
+
+def split_bulk(text: str) -> list[tuple[str, list[str]]]:
+    """Split a block of text into (task line, [subtask lines]).
+
+    One task per line. A line that is indented, or starts with "+", becomes a
+    subtask of the task above it. List markers ("-", "*", "•", "1.", "[ ]")
+    are stripped, so pasted lists and markdown checklists work as-is.
+    """
+    items: list[tuple[str, list[str]]] = []
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        is_sub = bool(items) and (raw[:1] in (" ", "\t") or stripped.startswith("+"))
+        clean = stripped
+        for _ in range(2):  # e.g. "- [ ] buy milk"
+            clean = BULLET_RE.sub("", clean, count=1)
+        clean = clean.strip()
+        if not clean:
+            continue
+        if is_sub:
+            items[-1][1].append(clean)
+        else:
+            items.append((clean, []))
+    return items

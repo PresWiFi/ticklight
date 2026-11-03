@@ -229,3 +229,35 @@ def test_migration_adds_column(tmp_path):
     db = DB(path)
     cols = {r["name"] for r in db.query("PRAGMA table_info(completions)")}
     assert "prev_subtasks" in cols
+
+
+# ---------- bulk add ----------
+def test_split_bulk_markers_and_subtasks():
+    from app.parser import split_bulk
+    text = "Plan party saturday !!\n  + invites\n  - cake\n+ balloons\n\n- [ ] buy milk\n1. call mum\n  2) nested\n"
+    assert split_bulk(text) == [
+        ("Plan party saturday !!", ["invites", "cake", "balloons"]),
+        ("buy milk", []),
+        ("call mum", ["nested"]),
+    ]
+    assert split_bulk("  first line indented\n+ sub") == [("first line indented", ["sub"])]
+
+
+def test_bulk_add_with_append_and_dry_run(env):
+    tasks, _ = env
+    text = "pack bag\n  + passport\nemail boss friday\nwater plants every 3 days"
+    preview = tasks.bulk_add(text, append="tomorrow !!", dry_run=True)
+    assert [p["title"] for p in preview] == ["pack bag", "email boss", "water plants"]
+    assert tasks.open_tasks() == []  # dry run saved nothing
+    added = tasks.bulk_add(text, append="tomorrow !!")
+    # the line's own date or schedule wins over the shared "tomorrow"
+    assert [t["due_date"] for t in added] == ["2026-11-03", "2026-11-06", "2026-11-02"]
+    assert all(t["priority"] == 2 for t in added)
+    assert [s["title"] for s in added[0]["subtasks"]] == ["passport"]
+    assert added[2]["recurrence"] == {"type": "daily", "interval": 3}
+
+
+def test_bulk_add_limit(env):
+    tasks, _ = env
+    with pytest.raises(ValueError):
+        tasks.bulk_add("\n".join(f"task {i}" for i in range(201)))

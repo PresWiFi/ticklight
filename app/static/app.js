@@ -424,6 +424,100 @@ form.addEventListener("submit", async (e) => {
   } catch (err) { alert(err.message); }
 });
 
+// ---------- bulk add ----------
+const bulkDlg = $("#bulk");
+let bulkTimer = null;
+let bulkCount = 0;
+
+function openBulk(text = "") {
+  $("#bulk-text").value = text;
+  $("#bulk-append").value = "";
+  bulkDlg.showModal();
+  const ta = $("#bulk-text");
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
+  bulkPreview();
+}
+
+function bulkPreview() {
+  clearTimeout(bulkTimer);
+  bulkTimer = setTimeout(async () => {
+    const text = $("#bulk-text").value;
+    let res = { count: 0, tasks: [] };
+    if (text.trim()) {
+      try {
+        res = await api("POST", "/api/bulk", { text, append: $("#bulk-append").value, dry_run: true });
+      } catch (e) {
+        $("#bulk-preview").replaceChildren(el("li", "", e.message));
+        $("#bulk-save").disabled = true;
+        return;
+      }
+    }
+    bulkCount = res.count;
+    const ol = $("#bulk-preview");
+    ol.replaceChildren(...res.tasks.map((t) => {
+      const li = el("li");
+      li.append(el("span", "bp-title p" + t.priority, t.title));
+      if (t.summary) li.append(el("div", "bp-meta", t.summary));
+      if (t.subtasks.length) {
+        const ul = el("ul");
+        t.subtasks.forEach((st) => ul.append(el("li", "", st)));
+        li.append(ul);
+      }
+      return li;
+    }));
+    $("#bulk-empty").hidden = res.count > 0;
+    $("#bulk-save").disabled = res.count === 0;
+    $("#bulk-save").textContent = res.count ? `Add ${res.count} task${res.count === 1 ? "" : "s"}` : "Add tasks";
+  }, 200);
+}
+
+$("#bulk-text").addEventListener("input", bulkPreview);
+$("#bulk-append").addEventListener("input", bulkPreview);
+// Tab indents (to make a subtask) instead of leaving the textarea
+$("#bulk-text").addEventListener("keydown", (e) => {
+  const ta = e.target;
+  if (e.key !== "Tab") return;
+  e.preventDefault();
+  const start = ta.value.lastIndexOf("\n", ta.selectionStart - 1) + 1;
+  if (e.shiftKey) {
+    if (ta.value.slice(start, start + 2) === "  ") ta.setRangeText("", start, start + 2, "end");
+  } else ta.setRangeText("  ", start, start, "end");
+  bulkPreview();
+});
+bulkDlg.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#bulk-form").requestSubmit(); }
+});
+$("#bulk-cancel").onclick = () => bulkDlg.close();
+$("#bulk-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!bulkCount) return;
+  $("#bulk-save").disabled = true;
+  try {
+    const res = await api("POST", "/api/bulk", { text: $("#bulk-text").value, append: $("#bulk-append").value });
+    bulkDlg.close();
+    const ids = res.tasks.map((t) => t.id);
+    toast(`Added ${res.count} task${res.count === 1 ? "" : "s"}`,
+      () => Promise.all(ids.map((id) => api("DELETE", `/api/tasks/${id}`))));
+    await load();
+  } catch (err) {
+    alert(err.message);
+    $("#bulk-save").disabled = false;
+  }
+});
+$("#btn-bulk").onclick = () => openBulk();
+
+// Pasting several lines into quick add opens the bulk dialog
+qi.addEventListener("paste", (e) => {
+  const text = e.clipboardData.getData("text") || "";
+  if (!text.trim().includes("\n")) return;
+  e.preventDefault();
+  const before = qi.value.trim();
+  qi.value = "";
+  $("#quick-preview").textContent = "";
+  openBulk((before ? before + "\n" : "") + text.replace(/\s+$/, ""));
+});
+
 // ---------- display mode & shortcuts ----------
 function setDisplay(on) {
   document.body.classList.toggle("display", on);
@@ -452,13 +546,14 @@ $("#btn-new").onclick = () => openEditor();
 setDisplay(!!localStorage.getItem("ticklight-display") || new URLSearchParams(location.search).has("display"));
 
 document.addEventListener("keydown", (e) => {
-  if (dlg.open || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
+  if (dlg.open || bulkDlg.open || ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) {
     if (e.key === "Escape" && document.activeElement === qi) { qi.value = ""; qi.blur(); $("#quick-preview").textContent = ""; }
     return;
   }
   if (e.key === "/") { e.preventDefault(); setDisplay(false); qi.focus(); }
   else if (e.key === "n") { e.preventDefault(); openEditor(); }
   else if (e.key === "t") toggleTheme();
+  else if (e.key === "b") { e.preventDefault(); openBulk(); }
   else if (e.key === "d") setDisplay(!document.body.classList.contains("display"));
 });
 

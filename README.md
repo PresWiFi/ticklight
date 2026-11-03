@@ -9,6 +9,8 @@ streaks, a morning summary, and due-time reminders.
 - **Quick add**: type `call dentist tomorrow 3pm !!` and a live preview shows what will be created.
 - **Recurring tasks**: daily / every N days, weekly on chosen days, monthly by date or "2nd Tuesday",
   yearly, and *N days after I complete it*. Complete, skip, or undo any occurrence.
+- **Bulk add**: paste or type a whole list, one task per line, with a live preview. Indented or `+`
+  lines become subtasks.
 - **Subtasks**: add a checklist to any task. Tick items right on the dashboard (Today/Overdue
   show the full list; other columns show `☑ 2/5`). On recurring tasks the checklist resets
   for each new occurrence.
@@ -38,9 +40,28 @@ streaks, a morning summary, and due-time reminders.
 | `meet at 5` | today 17:00 (bare 1–6 means pm) |
 
 Priority: `!!` or `!high` = high, `!low` = low.
-In Telegram you can send several lines at once to add several tasks.
 
-**Keyboard** (dashboard): `/` quick add · `n` new task with full options · `d` toggle display mode ·
+## Adding many tasks at once
+
+Press `b` or the ☰ button. Pasting several lines into the quick-add box opens the same dialog.
+Each line is a task, written like quick add. Indent a line (Tab) or start it with `+` to make it
+a subtask of the task above. List markers (`-`, `*`, `1.`, `- [ ]`) are stripped, so lists copied from
+notes apps and markdown checklists work as they are.
+
+```
+Plan party saturday !!
+  + send invites
+  + order cake
+call mum tomorrow 6pm
+- water plants every 3 days
+- [ ] book flights
+```
+
+**Add to every task** (e.g. `tomorrow !!`) applies a date, time or priority to every line that
+doesn't set its own. The preview shows exactly what will be created, and Undo removes the whole batch.
+In Telegram, send a multi-line message to do the same (start subtask lines with `+`).
+
+**Keyboard** (dashboard): `/` quick add · `b` add many · `n` new task with full options · `d` toggle display mode ·
 `t` light/dark · `Esc` clear.
 Click a task's title to edit it, including its subtasks. Hover a task to add subtasks (☑+), skip, or delete it.
 In the subtask box, paste several lines to add several items at once.
@@ -120,6 +141,7 @@ All JSON. Send `Authorization: Bearer <API_TOKEN>` if you set a token.
 
 ```
 POST   /api/quick                 {"text": "water plants every 3 days"}
+POST   /api/bulk                  {"text": "a\n+ sub\nb", "append": "tomorrow", "dry_run": false}
 POST   /api/parse                 {"text": "..."}  preview only, nothing saved
 GET    /api/board                 dashboard sections
 GET    /api/tasks                 open tasks

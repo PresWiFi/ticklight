@@ -60,3 +60,14 @@ def test_subtask_api(tmp_path):
         assert c.post("/api/tasks/999/subtasks", json={"title": "x"}).status_code == 404
         assert c.post(f"/api/tasks/{t['id']}/subtasks", json={"title": ""}).status_code == 400
         assert c.post(f"/api/tasks/{t['id']}/complete").status_code == 200  # other actions still route
+
+
+def test_bulk_api(tmp_path):
+    with make_client(tmp_path) as c:
+        r = c.post("/api/bulk", json={"text": "a\n+ a1\nb tomorrow", "dry_run": True}).json()
+        assert r["count"] == 2 and r["tasks"][0]["subtasks"] == ["a1"]
+        assert c.get("/api/tasks").json() == []
+        r = c.post("/api/bulk", json={"text": "a\n+ a1\nb tomorrow", "append": "!low"}).json()
+        assert r["count"] == 2 and all(t["priority"] == 0 for t in r["tasks"])
+        assert len(c.get("/api/tasks").json()) == 2
+        assert c.post("/api/bulk", json={"text": "\n".join(["x"] * 201)}).status_code == 400

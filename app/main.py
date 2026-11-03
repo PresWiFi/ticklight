@@ -148,6 +148,19 @@ def quick_add(body: QuickIn):
     return tasks.quick_add(body.text)
 
 
+class BulkIn(BaseModel):
+    text: str
+    append: str = ""
+    dry_run: bool = False
+
+
+@app.post("/api/bulk", dependencies=api)
+def bulk_add(body: BulkIn):
+    """One task per line; indented or "+" lines become subtasks of the task above."""
+    result = tasks.bulk_add(body.text, body.append, body.dry_run)
+    return {"count": len(result), "tasks": result}
+
+
 @app.post("/api/parse", dependencies=api)
 def parse_preview(body: QuickIn):
     p = parser.parse(body.text, tasks.today())
